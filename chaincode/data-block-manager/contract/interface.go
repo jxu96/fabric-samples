@@ -8,51 +8,48 @@ type DataBlockLedger struct {
 	contractapi.Contract
 }
 
-type DataBlockPublic struct {
-	ID          string `json:"ID"`
-	Title       string `json:"Title"`
-	Description string `json:"Description"`
-}
-
-type DataBlockPreserved struct {
-	OwnerID   string `json:"OwnerID"`
-	Timestamp string `json:"Timestamp"`
-}
-
-type DataBlockPrivate struct {
-	Content []byte `json:"Content"`
+type DataBlockInterface interface {
+	to_bytes() ([]byte, error)
+	from_bytes(key string, bs []byte) error
 }
 
 type DataBlock struct {
-	DataBlockInput
-	DataBlockPreserved
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Owner       string `json:"owner"`
+	Timestamp   string `json:"timestamp"`
+}
+
+type DataBlockPrivate struct {
+	ID      string `json:"id"`
+	Content []byte `json:"content"`
 }
 
 type DataBlockInput struct {
-	DataBlockPublic
-	DataBlockPrivate
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Content     []byte `json:"content"`
 }
+
+var (
+	CollectionDataBlock       string = "collectionDataBlock"
+	CollectionDataBlockPublic string = "collectionDataBlockPublic"
+)
 
 var InitialDataBlocks = []DataBlockInput{
 	{
-		DataBlockPublic{
-			ID:          "data1",
-			Title:       "Test data suite 1",
-			Description: "Empty dataset for testing",
-		},
-		DataBlockPrivate{
-			Content: []byte(`{"train": {}, "test": {}}`),
-		},
+		ID:          "data1",
+		Title:       "Test data suite 1",
+		Description: "Empty dataset for testing",
+		Content:     []byte(`{"train": {}, "test": {}}`),
 	},
 	{
-		DataBlockPublic{
-			ID:          "data2",
-			Title:       "Test data suite 2",
-			Description: "Empty dataset for testing",
-		},
-		DataBlockPrivate{
-			Content: []byte(`{"train": {}, "test": {}}`),
-		},
+		ID:          "data2",
+		Title:       "Test data suite 2",
+		Description: "Empty dataset for testing",
+		Content:     []byte(`{"train": {}, "test": {}}`),
 	},
 }
 

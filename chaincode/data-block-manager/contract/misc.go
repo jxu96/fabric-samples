@@ -1,10 +1,47 @@
 package contract
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
+
+func (block *DataBlock) to_bytes() ([]byte, error) {
+	bs, err := json.Marshal(*block)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to encode data block to bytes: %s\n%v", block.ID, err)
+	}
+
+	return bs, nil
+}
+
+func (block *DataBlock) from_bytes(key string, bs []byte) error {
+	err := json.Unmarshal(bs, block)
+	if err != nil {
+		return fmt.Errorf("Failed to parse data block: %s\n%v", key, err)
+	}
+
+	return nil
+}
+
+func (block *DataBlockPrivate) to_bytes() ([]byte, error) {
+	bs, err := json.Marshal(*block)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to encode data block to bytes: %s\n%v", block.ID, err)
+	}
+
+	return bs, nil
+}
+
+func (block *DataBlockPrivate) from_bytes(key string, bs []byte) error {
+	err := json.Unmarshal(bs, block)
+	if err != nil {
+		return fmt.Errorf("Failed to parse data block: %s\n%v", key, err)
+	}
+
+	return nil
+}
 
 func (l *DataBlockLedger) require_certification_read(ctx contractapi.TransactionContextInterface) error {
 	/**
