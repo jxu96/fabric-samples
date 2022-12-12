@@ -1,6 +1,8 @@
 package contract
 
 import (
+	"fmt"
+
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
@@ -18,6 +20,7 @@ type DataBlock struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Owner       string `json:"owner"`
+	OwnerOrg    string `json:"owner_org"`
 	Timestamp   string `json:"timestamp"`
 }
 
@@ -36,10 +39,11 @@ type DataBlockInput struct {
 type DataBlockListInterface interface {
 }
 
-var (
-	CollectionDataBlock        string = "collectionDataBlock"
-	CollectionDataBlockPrivate string = "collectionDataBlockPrivate"
-)
+var public_data_collection = "publicDataBlockCollection"
+
+func implicit_private_data_collection(mspId string) string {
+	return fmt.Sprintf("_implicit_org_%s", mspId)
+}
 
 var InitialDataBlocks = []DataBlockInput{
 	{
@@ -57,7 +61,24 @@ var InitialDataBlocks = []DataBlockInput{
 }
 
 func (l *DataBlockLedger) Register(ctx contractapi.TransactionContextInterface) error {
-	err := l.require_certification_write(ctx)
+	client_id, err := get_client_id(ctx)
+	if err != nil {
+		return err
+	}
+
+	client_msp_id, err := get_client_msp_id(ctx)
+	if err != nil {
+		return err
+	}
+
+	peer_msp_id, err := get_peer_msp_id()
+	if err != nil {
+		return err
+	}
+
+	assert_client_matches_peer(client_msp_id, peer_msp_id)
+
+	err = l.require_certification_write(ctx)
 	if err != nil {
 		return err
 	}
@@ -67,9 +88,9 @@ func (l *DataBlockLedger) Register(ctx contractapi.TransactionContextInterface) 
 		return err
 	}
 
-	sender, err := l.get_tx_sender(ctx)
-	if err != nil {
-		return err
+	data, ok := transient["data_block"]
+	if !ok {
+		return fmt.Errorf("Failed to retrive data block information from transient.")
 	}
 
 	timestamp, err := l.get_tx_timestamp(ctx)
@@ -77,40 +98,51 @@ func (l *DataBlockLedger) Register(ctx contractapi.TransactionContextInterface) 
 		return err
 	}
 
-	for key, data := range transient {
-		// register public section in the collection
-		block := new(DataBlock)
-		block.Owner = sender
-		block.Timestamp = timestamp
+	block := new(DataBlock)
+	block.Owner = client_id
+	block.OwnerOrg = client_msp_id
+	block.Timestamp = timestamp
 
-		err := block.from_bytes(key, data)
-		if err != nil {
-			return err
-		}
+	err = block.from_bytes("", data)
+	if err != nil {
+		return err
+	}
 
-		err = l.create_data_block(ctx, CollectionDataBlock, block.ID, block)
-		if err != nil {
-			return err
-		}
+	// register in the public collection
+	err = l.create_data_block(ctx, public_data_collection, block.ID, block)
+	if err != nil {
+		return err
+	}
 
-		// register private section in permissioned collection
-		block_private := new(DataBlockPrivate)
-		err = block_private.from_bytes(key, data)
-		if err != nil {
-			return err
-		}
+	// register in the private collection
+	block_private := new(DataBlockPrivate)
+	err = block_private.from_bytes("", data)
+	if err != nil {
+		return err
+	}
 
-		err = l.create_data_block(ctx, CollectionDataBlockPrivate, block_private.ID, block_private)
-		if err != nil {
-			return err
-		}
+	err = l.create_data_block(ctx, implicit_private_data_collection(client_msp_id), block_private.ID, block_private)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (l *DataBlockLedger) Update(ctx contractapi.TransactionContextInterface) error {
-	err := l.require_certification_write(ctx)
+func (l *DataBlockLedger) Remove(ctx contractapi.TransactionContextInterface) error {
+	client_msp_id, err := get_client_msp_id(ctx)
+	if err != nil {
+		return err
+	}
+
+	peer_msp_id, err := get_peer_msp_id()
+	if err != nil {
+		return err
+	}
+
+	assert_client_matches_peer(client_msp_id, peer_msp_id)
+
+	err = l.require_certification_write(ctx)
 	if err != nil {
 		return err
 	}
@@ -120,104 +152,72 @@ func (l *DataBlockLedger) Update(ctx contractapi.TransactionContextInterface) er
 		return err
 	}
 
-	timestamp, err := l.get_tx_timestamp(ctx)
+	data, ok := transient["data_block"]
+	if !ok {
+		return fmt.Errorf("Failed to retrieve data block information from transient.")
+	}
+
+	block := new(DataBlock)
+	err = block.from_bytes("", data)
 	if err != nil {
 		return err
 	}
 
-	for key, data := range transient {
-		// update public section in the collection
-		block := new(DataBlock)
-		block.Timestamp = timestamp
+	err = l.delete_data_block(ctx, public_data_collection, block.ID)
+	if err != nil {
+		return err
+	}
 
-		err := block.from_bytes(key, data)
-		if err != nil {
-			return err
-		}
-
-		err = l.update_data_block(ctx, CollectionDataBlock, block.ID, block)
-		if err != nil {
-			return err
-		}
-
-		// update private section in permissioned collection
-		block_private := new(DataBlockPrivate)
-		err = block_private.from_bytes(key, data)
-		if err != nil {
-			return err
-		}
-
-		err = l.update_data_block(ctx, CollectionDataBlockPrivate, block_private.ID, block_private)
-		if err != nil {
-			return err
-		}
+	err = l.delete_data_block(ctx, implicit_private_data_collection(client_msp_id), block.ID)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (l *DataBlockLedger) Remove(ctx contractapi.TransactionContextInterface, keys []string) error {
-	err := l.require_certification_write(ctx)
+func (l *DataBlockLedger) Query(ctx contractapi.TransactionContextInterface, key string) (*DataBlock, error) {
+	block := new(DataBlock)
+	err := l.read_data_block(ctx, public_data_collection, key, block)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for _, key := range keys {
-		err := l.delete_data_block(ctx, CollectionDataBlock, key)
-		if err != nil {
-			return err
-		}
-
-		err = l.delete_data_block(ctx, CollectionDataBlockPrivate, key)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return block, nil
 }
 
-func (l *DataBlockLedger) Query(ctx contractapi.TransactionContextInterface, keys []string) ([]*DataBlock, error) {
+func (l *DataBlockLedger) QueryPrivate(ctx contractapi.TransactionContextInterface, key string) (*DataBlockPrivate, error) {
 	err := l.require_certification_read(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	blocks := make([]*DataBlock, len(keys))
-	for i, key := range keys {
-		err := l.read_data_block(ctx, CollectionDataBlock, key, blocks[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return blocks, nil
-}
-
-func (l *DataBlockLedger) QueryPrivate(ctx contractapi.TransactionContextInterface, keys []string) ([]*DataBlockPrivate, error) {
-	err := l.require_certification_read(ctx)
+	block := new(DataBlock)
+	err = l.read_data_block(ctx, public_data_collection, key, block)
 	if err != nil {
 		return nil, err
 	}
 
-	blocks := make([]*DataBlockPrivate, len(keys))
-	for i, key := range keys {
-		err := l.read_data_block(ctx, CollectionDataBlockPrivate, key, blocks[i])
-		if err != nil {
-			return nil, err
-		}
+	peer_msp_id, err := get_peer_msp_id()
+	if err != nil {
+		return nil, err
 	}
 
-	return blocks, nil
+	if peer_msp_id != block.OwnerOrg {
+		return nil, fmt.Errorf("Org mismatch.")
+	}
+
+	block_private := new(DataBlockPrivate)
+	err = l.read_data_block(ctx, implicit_private_data_collection(block.OwnerOrg), key, block_private)
+	if err != nil {
+		return nil, err
+	}
+
+	return block_private, nil
 }
 
 func (l *DataBlockLedger) QueryByRange(ctx contractapi.TransactionContextInterface, start string, end string, max int) ([]*DataBlock, error) {
-	err := l.require_certification_read(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	map_, err := l.get_by_range(ctx, CollectionDataBlock, start, end, max)
+	map_, err := l.get_by_range(ctx, public_data_collection, start, end, max)
 	if err != nil {
 		return nil, err
 	}

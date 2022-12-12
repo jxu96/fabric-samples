@@ -1,18 +1,11 @@
 [
-	{
-	  "name": "collectionDataBlock",
-	  "policy": "OR('Org1MSP.member', 'Org2MSP.member')",
-	  "requiredPeerCount": 0,
-	  "maxPeerCount": 3,
-	  "blockToLive":1000000,
-	  "memberOnlyRead": true
-  },
-	{
-	  "name": "collectionDataBlockPrivate",
-	  "policy": "OR('Org1MSP.member')",
-	  "requiredPeerCount": 0,
-	  "maxPeerCount": 3,
-	  "blockToLive":3,
-	  "memberOnlyRead": true
-	}
+  {
+    "name": "publicDataBlockCollection",
+    "policy": "OR('Org1MSP.member', 'Org2MSP.member')",
+    "requiredPeerCount": 1,
+    "maxPeerCount": 1,
+    "blockToLive":1000000,
+    "memberOnlyRead": true,
+    "memberOnlyWrite": true
+  }
 ]

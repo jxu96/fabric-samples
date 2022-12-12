@@ -1,9 +1,11 @@
 package contract
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
+	"github.com/hyperledger/fabric-chaincode-go/shim"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
@@ -86,4 +88,39 @@ func (l *DataBlockLedger) get_tx_timestamp(ctx contractapi.TransactionContextInt
 	}
 
 	return ts.String(), nil
+}
+
+func get_client_id(ctx contractapi.TransactionContextInterface) (string, error) {
+	bs, err := ctx.GetClientIdentity().GetID()
+	if err != nil {
+		return "", fmt.Errorf("Failed to retrive ID from the client.\n%v", err)
+	}
+	id, err := base64.StdEncoding.DecodeString(bs)
+	if err != nil {
+		return "", fmt.Errorf("Failed to decode ID of the client.\n%v", err)
+	}
+	return string(id), nil
+}
+
+func get_client_msp_id(ctx contractapi.TransactionContextInterface) (string, error) {
+	client, err := ctx.GetClientIdentity().GetMSPID()
+	if err != nil {
+		return "", fmt.Errorf("Failed to retrieve MSP ID from the client.\n%v", err)
+	}
+	return client, nil
+}
+
+func get_peer_msp_id() (string, error) {
+	peer, err := shim.GetMSPID()
+	if err != nil {
+		return "", fmt.Errorf("Failed to retrieve MSP ID from the peer.\n%v", err)
+	}
+	return peer, nil
+}
+
+func assert_client_matches_peer(client string, peer string) error {
+	if client != peer {
+		return fmt.Errorf("Client from org %s is not authorized to access private data from an org %s peer", client, peer)
+	}
+	return nil
 }
