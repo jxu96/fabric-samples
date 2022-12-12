@@ -62,6 +62,14 @@ func (l *DataBlockLedger) require_certification_write(ctx contractapi.Transactio
 	return nil
 }
 
+func (l *DataBlockLedger) get_tx_transient(ctx contractapi.TransactionContextInterface) (map[string][]byte, error) {
+	m, err := ctx.GetStub().GetTransient()
+	if err != nil {
+		return nil, fmt.Errorf("Error getting transient.\n%v", err)
+	}
+	return m, nil
+}
+
 func (l *DataBlockLedger) get_tx_sender(ctx contractapi.TransactionContextInterface) (string, error) {
 	id, err := ctx.GetStub().GetCreator()
 	if err != nil {

@@ -16,6 +16,27 @@ func (l *DataBlockLedger) get(ctx contractapi.TransactionContextInterface, colle
 	return bs, nil
 }
 
+func (l *DataBlockLedger) get_by_range(ctx contractapi.TransactionContextInterface, collection string, start string, end string, max int) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	resp, err := ctx.GetStub().GetPrivateDataByRange(collection, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get data block in collection [%s] from key [%s] to key [%s].\n%v", collection, start, end, err)
+	}
+	defer resp.Close()
+
+	for resp.HasNext() && len(result) < max {
+		next, err := resp.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		result[next.Key] = next.Value
+	}
+
+	return result, nil
+}
+
 func (l *DataBlockLedger) set(ctx contractapi.TransactionContextInterface, collection string, key string, bs []byte) error {
 	// err := ctx.GetStub().PutState(key, bs)
 	err := ctx.GetStub().PutPrivateData(collection, key, bs)
@@ -86,32 +107,14 @@ func (l *DataBlockLedger) read_data_block(ctx contractapi.TransactionContextInte
 // 	return block, nil
 // }
 
-func (l *DataBlockLedger) read_data_block_by_range(ctx contractapi.TransactionContextInterface, collection string, start string, end string) ([]*DataBlock, error) {
-	blocks := []*DataBlock{}
+// func (l *DataBlockLedger) read_data_block_by_range(ctx contractapi.TransactionContextInterface, collection string, start string, end string, max int) error {
+// 	map_, err := l.get_by_range(ctx, collection, start, end, max)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	resp, err := ctx.GetStub().GetPrivateDataByRange(collection, start, end)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get data block in collection [%s] from key [%s] to key [%s].\n%v", collection, start, end, err)
-	}
-	defer resp.Close()
-
-	for resp.HasNext() {
-		query, err := resp.Next()
-		if err != nil {
-			return nil, err
-		}
-
-		block := new(DataBlock)
-
-		err = block.from_bytes(query.Key, query.Value)
-		if err != nil {
-			return nil, err
-		}
-		blocks = append(blocks, block)
-	}
-
-	return blocks, nil
-}
+// 	return nil
+// }
 
 func (l *DataBlockLedger) create_data_block(ctx contractapi.TransactionContextInterface, collection string, key string, block DataBlockInterface) error {
 	err := l.check_data_block_not_exists(ctx, collection, key)

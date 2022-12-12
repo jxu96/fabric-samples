@@ -33,9 +33,12 @@ type DataBlockInput struct {
 	Content     []byte `json:"content"`
 }
 
+type DataBlockListInterface interface {
+}
+
 var (
-	CollectionDataBlock       string = "collectionDataBlock"
-	CollectionDataBlockPublic string = "collectionDataBlockPublic"
+	CollectionDataBlock        string = "collectionDataBlock"
+	CollectionDataBlockPrivate string = "collectionDataBlockPrivate"
 )
 
 var InitialDataBlocks = []DataBlockInput{
@@ -53,12 +56,13 @@ var InitialDataBlocks = []DataBlockInput{
 	},
 }
 
-func (l *DataBlockLedger) Init(ctx contractapi.TransactionContextInterface) error {
-	return l.Register(ctx, InitialDataBlocks)
-}
-
-func (l *DataBlockLedger) Register(ctx contractapi.TransactionContextInterface, inputs []DataBlockInput) error {
+func (l *DataBlockLedger) Register(ctx contractapi.TransactionContextInterface) error {
 	err := l.require_certification_write(ctx)
+	if err != nil {
+		return err
+	}
+
+	transient, err := l.get_tx_transient(ctx)
 	if err != nil {
 		return err
 	}
@@ -73,18 +77,30 @@ func (l *DataBlockLedger) Register(ctx contractapi.TransactionContextInterface, 
 		return err
 	}
 
-	preserved := DataBlockPreserved{
-		OwnerID:   sender,
-		Timestamp: timestamp,
-	}
+	for key, data := range transient {
+		// register public section in the collection
+		block := new(DataBlock)
+		block.Owner = sender
+		block.Timestamp = timestamp
 
-	for _, input := range inputs {
-		block := DataBlock{
-			input,
-			preserved,
+		err := block.from_bytes(key, data)
+		if err != nil {
+			return err
 		}
 
-		err := l.create_data_block(ctx, &block)
+		err = l.create_data_block(ctx, CollectionDataBlock, block.ID, block)
+		if err != nil {
+			return err
+		}
+
+		// register private section in permissioned collection
+		block_private := new(DataBlockPrivate)
+		err = block_private.from_bytes(key, data)
+		if err != nil {
+			return err
+		}
+
+		err = l.create_data_block(ctx, CollectionDataBlockPrivate, block_private.ID, block_private)
 		if err != nil {
 			return err
 		}
@@ -93,8 +109,13 @@ func (l *DataBlockLedger) Register(ctx contractapi.TransactionContextInterface, 
 	return nil
 }
 
-func (l *DataBlockLedger) Update(ctx contractapi.TransactionContextInterface, inputs []DataBlockInput) error {
+func (l *DataBlockLedger) Update(ctx contractapi.TransactionContextInterface) error {
 	err := l.require_certification_write(ctx)
+	if err != nil {
+		return err
+	}
+
+	transient, err := l.get_tx_transient(ctx)
 	if err != nil {
 		return err
 	}
@@ -104,15 +125,29 @@ func (l *DataBlockLedger) Update(ctx contractapi.TransactionContextInterface, in
 		return err
 	}
 
-	for _, input := range inputs {
-		block := DataBlock{
-			input,
-			DataBlockPreserved{
-				Timestamp: timestamp,
-			},
+	for key, data := range transient {
+		// update public section in the collection
+		block := new(DataBlock)
+		block.Timestamp = timestamp
+
+		err := block.from_bytes(key, data)
+		if err != nil {
+			return err
 		}
 
-		err := l.update_data_block(ctx, &block)
+		err = l.update_data_block(ctx, CollectionDataBlock, block.ID, block)
+		if err != nil {
+			return err
+		}
+
+		// update private section in permissioned collection
+		block_private := new(DataBlockPrivate)
+		err = block_private.from_bytes(key, data)
+		if err != nil {
+			return err
+		}
+
+		err = l.update_data_block(ctx, CollectionDataBlockPrivate, block_private.ID, block_private)
 		if err != nil {
 			return err
 		}
@@ -128,7 +163,12 @@ func (l *DataBlockLedger) Remove(ctx contractapi.TransactionContextInterface, ke
 	}
 
 	for _, key := range keys {
-		err := l.delete_data_block(ctx, key)
+		err := l.delete_data_block(ctx, CollectionDataBlock, key)
+		if err != nil {
+			return err
+		}
+
+		err = l.delete_data_block(ctx, CollectionDataBlockPrivate, key)
 		if err != nil {
 			return err
 		}
@@ -139,36 +179,57 @@ func (l *DataBlockLedger) Remove(ctx contractapi.TransactionContextInterface, ke
 
 func (l *DataBlockLedger) Query(ctx contractapi.TransactionContextInterface, keys []string) ([]*DataBlock, error) {
 	err := l.require_certification_read(ctx)
-	visitor_mode := err != nil
+	if err != nil {
+		return nil, err
+	}
 
-	blocks := []*DataBlock{}
-	for _, key := range keys {
-		block, err := l.read_data_block(ctx, key)
+	blocks := make([]*DataBlock, len(keys))
+	for i, key := range keys {
+		err := l.read_data_block(ctx, CollectionDataBlock, key, blocks[i])
 		if err != nil {
 			return nil, err
 		}
-		// if read access if not granted, hide the private section
-		if visitor_mode {
-			block.DataBlockPrivate = DataBlockPrivate{}
-		}
-		blocks = append(blocks, block)
 	}
 
 	return blocks, nil
 }
 
-func (l *DataBlockLedger) QueryAll(ctx contractapi.TransactionContextInterface) ([]*DataBlock, error) {
+func (l *DataBlockLedger) QueryPrivate(ctx contractapi.TransactionContextInterface, keys []string) ([]*DataBlockPrivate, error) {
 	err := l.require_certification_read(ctx)
-	visitor_mode := err != nil
-
-	blocks, err := l.read_data_block_all(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if visitor_mode {
-		for _, block := range blocks {
-			block.DataBlockPrivate = DataBlockPrivate{}
+
+	blocks := make([]*DataBlockPrivate, len(keys))
+	for i, key := range keys {
+		err := l.read_data_block(ctx, CollectionDataBlockPrivate, key, blocks[i])
+		if err != nil {
+			return nil, err
 		}
+	}
+
+	return blocks, nil
+}
+
+func (l *DataBlockLedger) QueryByRange(ctx contractapi.TransactionContextInterface, start string, end string, max int) ([]*DataBlock, error) {
+	err := l.require_certification_read(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	map_, err := l.get_by_range(ctx, CollectionDataBlock, start, end, max)
+	if err != nil {
+		return nil, err
+	}
+
+	blocks := []*DataBlock{}
+	for key, val := range map_ {
+		block := new(DataBlock)
+		err := block.from_bytes(key, val)
+		if err != nil {
+			return nil, err
+		}
+		blocks = append(blocks, block)
 	}
 
 	return blocks, nil
