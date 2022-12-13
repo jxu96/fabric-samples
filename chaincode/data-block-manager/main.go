@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	chaincode, err := contractapi.NewChaincode(&contract.DataBlockLedger{})
+	chaincode, err := contractapi.NewChaincode(&contract.DatasetMetadataLedger{})
 	if err != nil {
 		log.Panicf("Error creating data-block-manager chaincode: %v", err)
 	}
