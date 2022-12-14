@@ -1,0 +1,26 @@
+{
+  "id": "org1.example.com/data001",
+  "name": "org1.example.com-data.csv",
+  "note": "",
+  "title": "Org1's example dataset",
+  "description": "This is an example dataset from Org1 for testing purpose.",
+  "source": "Universitet i Stavanger",
+  "organisation": "org1.example.com",
+  "maintainer": "root@org1.example.com",
+  "date": "2022-01-01T09:00:00.000Z",
+  "location": "Stavanger, Norway",
+  "fieldNames": [
+    "x1",
+    "x2"
+  ],
+  "fileTypes": ["csv"],
+  "numberOfRows": 100,
+  "license": "ODC-PDDL",
+  "defineLicense": "",
+  "methodology": "",
+  "defineMethodology": "",
+  "updateFrequency": "",
+  "comments": "",
+  "tags": ["t1", "t2"],
+  "endpoint": "api.org1.example.com"
+}
